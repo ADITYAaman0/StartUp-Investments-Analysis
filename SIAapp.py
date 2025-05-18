@@ -1,132 +1,173 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
 import os
-import time
-import requests
-from streamlit_lottie import st_lottie
+from streamlit_extras.animate import animate
 
-# Constants
-data_paths = ['cleaned_investments!.csv', './.devcontainer/cleaned_investments!.csv']
+DEFAULT_DATA_PATH = 'cleaned_investments!.csv'
+ALTERNATE_DATA_PATH = './.devcontainer/cleaned_investments!.csv'
 TOP_N = 10
 
+sns.set_theme(style="whitegrid")
+plt.rcParams['figure.figsize'] = (12, 7)
+plt.rcParams['font.size'] = 12
+
 @st.cache_data
-def load_data():
-    for path in data_paths:
+def load_data(path):
+    try:
+        df = pd.read_csv(path)
+        numeric_cols = {
+            'first_funding_year': 'int',
+            'funding_total_usd': 'float',
+            'funding_rounds': 'int'
+        }
+        for col, dtype in numeric_cols.items():
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(dtype)
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return None
+
+def try_load_data():
+    possible_paths = [DEFAULT_DATA_PATH, ALTERNATE_DATA_PATH]
+    for path in possible_paths:
         if os.path.exists(path):
-            df = pd.read_csv(path)
-            for col, dtype in {'first_funding_year': int, 'funding_total_usd': float, 'funding_rounds': int}.items():
-                if col in df:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(dtype)
-            return df
-    st.error('Data file not found.')
-    return pd.DataFrame()
-
-
-def load_lottieurl(url: str):
-    res = requests.get(url)
-    if res.status_code == 200:
-        return res.json()
+            return load_data(path)
+    st.warning("Data file not found at default locations.")
+    for path in possible_paths:
+        st.write(f"- {path}")
     return None
 
-
 def show_overview(df):
+    st.subheader("Total Funding Overview")
     total = df['funding_total_usd'].sum()
-    st.metric('Total Funding (USD)', f"${total:,.0f}")
+    animate(st.metric, label="Total Startup Funding (USD)", value=f"${total:,.0f}")
     st.dataframe(df.head(10))
 
-
 def show_top_companies(df, n):
-    data = df.groupby('name')['funding_total_usd'].sum().reset_index()
-    top = data.nlargest(n, 'funding_total_usd')
-    fig = px.bar(top, x='funding_total_usd', y='name', orientation='h', title=f'Top {n} Companies', animation_frame=None)
-    st.plotly_chart(fig, use_container_width=True)
-
+    top = df.groupby('name')['funding_total_usd'].sum().nlargest(n).sort_values()
+    fig, ax = plt.subplots()
+    top.plot(kind='barh', color=sns.color_palette('viridis', n), ax=ax)
+    ax.set_title(f'Top {n} Funded Companies')
+    animate(st.pyplot, fig)
 
 def show_funding_by_country(df, n):
-    data = df.groupby('country')['funding_total_usd'].sum().reset_index()
-    top = data.nlargest(n, 'funding_total_usd')
-    fig = px.bar(top, x='funding_total_usd', y='country', orientation='h', title=f'Top {n} Countries')
-    st.plotly_chart(fig, use_container_width=True)
-
+    by_country = df.groupby('country')['funding_total_usd'].sum().nlargest(n).sort_values()
+    fig, ax = plt.subplots()
+    by_country.plot(kind='barh', color=sns.color_palette('magma', n), ax=ax)
+    ax.set_title(f'Top {n} Countries by Funding')
+    animate(st.pyplot, fig)
 
 def show_active_markets(df, n):
-    data = df.groupby('primary_category')['name'].nunique().reset_index(name='count')
-    top = data.nlargest(n, 'count')
-    fig = px.bar(top, x='count', y='primary_category', orientation='h', title=f'Top {n} Markets')
-    st.plotly_chart(fig, use_container_width=True)
-
+    markets = df.groupby('primary_category')['name'].nunique().nlargest(n).sort_values()
+    fig, ax = plt.subplots()
+    markets.plot(kind='barh', color=sns.color_palette('coolwarm', n), ax=ax)
+    ax.set_title(f'Top {n} Active Markets')
+    animate(st.pyplot, fig)
 
 def show_funding_trends(df):
-    data = df[df['first_funding_year'] > 1980].groupby('first_funding_year')['funding_total_usd'].sum().reset_index()
-    fig = px.bar(data, x='first_funding_year', y='funding_total_usd', animation_frame='first_funding_year', range_y=[0, data['funding_total_usd'].max()], title='Funding Trends Over Years')
-    st.plotly_chart(fig, use_container_width=True)
-
+    data = df[df['first_funding_year'] > 1980].groupby('first_funding_year')['funding_total_usd'].sum()
+    fig, ax = plt.subplots()
+    data.plot(kind='line', marker='o', ax=ax)
+    ax.set_title('Funding Trends Over Years')
+    ax.set_xlabel('Year')
+    ax.set_ylabel('Funding (USD)')
+    animate(st.pyplot, fig)
 
 def show_status_distribution(df):
-    if 'status' in df:
-        counts = df['status'].value_counts().reset_index()
-        fig = px.pie(counts, values='status', names='index', title='Status Distribution')
-        st.plotly_chart(fig, use_container_width=True)
+    if 'status' in df.columns:
+        counts = df['status'].value_counts()
+        fig, ax = plt.subplots()
+        counts.plot(kind='pie', autopct='%1.1f%%', ax=ax)
+        ax.set_ylabel('')
+        ax.set_title('Startup Status Distribution')
+        animate(st.pyplot, fig)
     else:
-        st.warning("'status' column missing")
+        st.warning("'status' column is missing in data.")
 
-
-def show_rounds_vs_funding(df):
+def show_funding_vs_rounds(df):
     df2 = df[(df['funding_rounds'] > 0) & (df['funding_total_usd'] > 0)]
     corr = df2['funding_rounds'].corr(df2['funding_total_usd'])
-    fig = px.scatter(df2, x='funding_rounds', y='funding_total_usd', log_y=True, title=f'Rounds vs Funding (corr={corr:.2f})')
-    st.plotly_chart(fig, use_container_width=True)
-
+    fig, ax = plt.subplots()
+    sns.scatterplot(data=df2, x='funding_rounds', y='funding_total_usd', ax=ax, alpha=0.6)
+    ax.set_yscale('log')
+    ax.set_title(f'Rounds vs Funding (corr={corr:.2f})')
+    animate(st.pyplot, fig)
 
 def show_category_boxplot(df):
-    top_cats = df['primary_category'].value_counts().nlargest(10).index
-    filt = df[df['primary_category'].isin(top_cats)]
-    fig = px.box(filt, x='primary_category', y='funding_total_usd', log_y=True, title='Funding by Category')
-    st.plotly_chart(fig, use_container_width=True)
+    top_categories = df['primary_category'].value_counts().nlargest(10).index
+    filtered = df[df['primary_category'].isin(top_categories)]
+    fig, ax = plt.subplots()
+    sns.boxplot(data=filtered, x='primary_category', y='funding_total_usd', ax=ax)
+    ax.set_yscale('log')
+    ax.set_title('Funding Distribution by Category (Top 10)')
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+    animate(st.pyplot, fig)
 
-
-def show_correlation(df):
-    corr = df[['funding_total_usd','funding_rounds','first_funding_year']].corr()
-    fig = px.imshow(corr, text_auto=True, title='Correlation Matrix')
-    st.plotly_chart(fig, use_container_width=True)
-
+def show_correlation_heatmap(df):
+    corr = df[['funding_total_usd', 'funding_rounds', 'first_funding_year']].corr()
+    fig, ax = plt.subplots()
+    sns.heatmap(corr, annot=True, cmap='coolwarm', ax=ax)
+    ax.set_title('Correlation Matrix')
+    animate(st.pyplot, fig)
 
 def main():
-    st.set_page_config(page_title='Startup Funding Insights', layout='wide')
-    # Lottie animation header
-    lottie_url = 'https://assets10.lottiefiles.com/packages/lf20_touohxv0.json'
-    lottie_json = load_lottieurl(lottie_url)
-    if lottie_json:
-        st_lottie(lottie_json, height=200, key='startup_animation')
+    st.set_page_config(
+        page_title="Startup Funding Insights",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
-    # Loading spinner and progress
-    with st.spinner('Loading data...'):
-        df = load_data()
-        time.sleep(1)
-    progress = st.progress(0)
-    for i in range(1, 101):
-        progress.progress(i)
-        time.sleep(0.005)
-
-    if df.empty:
+    st.title("\U0001F4CA Startup Funding Insights Dashboard")
+    df = try_load_data()
+    if df is None or df.empty:
+        st.error("Failed to load data.")
         return
 
+    st.sidebar.title("Navigation")
     sections = [
-        'Overview','Top Funded Companies','Funding by Country','Active Markets',
-        'Funding Trends','Status Distribution','Rounds vs Funding','Category Boxplot','Correlation'
+        "Overview",
+        "Top Funded Companies",
+        "Funding by Country",
+        "Active Markets",
+        "Funding Trends",
+        "Startup Status",
+        "Rounds vs Funding",
+        "Category Boxplot",
+        "Correlation Heatmap"
     ]
-    choice = st.sidebar.radio('Select Section', sections)
+    choice = st.sidebar.radio("Select Section", sections)
 
-    if choice == 'Overview': show_overview(df)
-    elif choice == 'Top Funded Companies': show_top_companies(df, st.sidebar.slider('N Companies',5,20,TOP_N))
-    elif choice == 'Funding by Country': show_funding_by_country(df, st.sidebar.slider('N Countries',5,20,TOP_N))
-    elif choice == 'Active Markets': show_active_markets(df, st.sidebar.slider('N Markets',5,20,TOP_N))
-    elif choice == 'Funding Trends': show_funding_trends(df)
-    elif choice == 'Status Distribution': show_status_distribution(df)
-    elif choice == 'Rounds vs Funding': show_rounds_vs_funding(df)
-    elif choice == 'Category Boxplot': show_category_boxplot(df)
-    elif choice == 'Correlation': show_correlation(df)
+    if choice == "Overview":
+        show_overview(df)
+    elif choice == "Top Funded Companies":
+        n = st.slider("Top N Companies", 5, 20, TOP_N)
+        show_top_companies(df, n)
+    elif choice == "Funding by Country":
+        n = st.slider("Top N Countries", 5, 20, TOP_N)
+        show_funding_by_country(df, n)
+    elif choice == "Active Markets":
+        n = st.slider("Top N Markets", 5, 20, TOP_N)
+        show_active_markets(df, n)
+    elif choice == "Funding Trends":
+        show_funding_trends(df)
+    elif choice == "Startup Status":
+        show_status_distribution(df)
+    elif choice == "Rounds vs Funding":
+        show_funding_vs_rounds(df)
+    elif choice == "Category Boxplot":
+        show_category_boxplot(df)
+    elif choice == "Correlation Heatmap":
+        show_correlation_heatmap(df)
+
+    with st.sidebar.expander("Debug Info"):
+        st.write(f"Data shape: {df.shape}")
+        st.write(f"Columns: {list(df.columns)}")
+        st.write(f"Current directory: {os.getcwd()}")
+        if st.checkbox("Show files in directory"):
+            st.write(f"Files present: {os.listdir('.')}")
 
 if __name__ == '__main__':
     main()
