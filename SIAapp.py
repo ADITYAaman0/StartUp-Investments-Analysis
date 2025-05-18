@@ -2,13 +2,17 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+import time
+import requests
+from streamlit_lottie import st_lottie
 
-DATA_PATHS = ['cleaned_investments!.csv', './.devcontainer/cleaned_investments!.csv']
+# Constants
+data_paths = ['cleaned_investments!.csv', './.devcontainer/cleaned_investments!.csv']
 TOP_N = 10
 
 @st.cache_data
 def load_data():
-    for path in DATA_PATHS:
+    for path in data_paths:
         if os.path.exists(path):
             df = pd.read_csv(path)
             for col, dtype in {'first_funding_year': int, 'funding_total_usd': float, 'funding_rounds': int}.items():
@@ -17,6 +21,13 @@ def load_data():
             return df
     st.error('Data file not found.')
     return pd.DataFrame()
+
+
+def load_lottieurl(url: str):
+    res = requests.get(url)
+    if res.status_code == 200:
+        return res.json()
+    return None
 
 
 def show_overview(df):
@@ -28,7 +39,7 @@ def show_overview(df):
 def show_top_companies(df, n):
     data = df.groupby('name')['funding_total_usd'].sum().reset_index()
     top = data.nlargest(n, 'funding_total_usd')
-    fig = px.bar(top, x='funding_total_usd', y='name', orientation='h', title=f'Top {n} Companies')
+    fig = px.bar(top, x='funding_total_usd', y='name', orientation='h', title=f'Top {n} Companies', animation_frame=None)
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -48,8 +59,7 @@ def show_active_markets(df, n):
 
 def show_funding_trends(df):
     data = df[df['first_funding_year'] > 1980].groupby('first_funding_year')['funding_total_usd'].sum().reset_index()
-    fig = px.bar(data, x='first_funding_year', y='funding_total_usd', animation_frame='first_funding_year', range_y=[0, data['funding_total_usd'].max()])
-    fig.update_layout(title='Funding Trends Over Years', xaxis_title='Year', yaxis_title='Funding (USD)')
+    fig = px.bar(data, x='first_funding_year', y='funding_total_usd', animation_frame='first_funding_year', range_y=[0, data['funding_total_usd'].max()], title='Funding Trends Over Years')
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -84,8 +94,21 @@ def show_correlation(df):
 
 def main():
     st.set_page_config(page_title='Startup Funding Insights', layout='wide')
-    st.title('📊 Startup Funding Insights')
-    df = load_data()
+    # Lottie animation header
+    lottie_url = 'https://assets10.lottiefiles.com/packages/lf20_touohxv0.json'
+    lottie_json = load_lottieurl(lottie_url)
+    if lottie_json:
+        st_lottie(lottie_json, height=200, key='startup_animation')
+
+    # Loading spinner and progress
+    with st.spinner('Loading data...'):
+        df = load_data()
+        time.sleep(1)
+    progress = st.progress(0)
+    for i in range(1, 101):
+        progress.progress(i)
+        time.sleep(0.005)
+
     if df.empty:
         return
 
@@ -96,9 +119,9 @@ def main():
     choice = st.sidebar.radio('Select Section', sections)
 
     if choice == 'Overview': show_overview(df)
-    elif choice == 'Top Funded Companies': show_top_companies(df, st.slider('N',5,20,TOP_N))
-    elif choice == 'Funding by Country': show_funding_by_country(df, st.slider('N',5,20,TOP_N))
-    elif choice == 'Active Markets': show_active_markets(df, st.slider('N',5,20,TOP_N))
+    elif choice == 'Top Funded Companies': show_top_companies(df, st.sidebar.slider('N Companies',5,20,TOP_N))
+    elif choice == 'Funding by Country': show_funding_by_country(df, st.sidebar.slider('N Countries',5,20,TOP_N))
+    elif choice == 'Active Markets': show_active_markets(df, st.sidebar.slider('N Markets',5,20,TOP_N))
     elif choice == 'Funding Trends': show_funding_trends(df)
     elif choice == 'Status Distribution': show_status_distribution(df)
     elif choice == 'Rounds vs Funding': show_rounds_vs_funding(df)
