@@ -5,8 +5,12 @@ import seaborn as sns
 import os
 
 # Configuration
-DEFAULT_DATA_PATH = 'cleaned_investments.csv'
-ALTERNATE_DATA_PATH = './.devcontainer/cleaned_investments.csv'
+
+DEFAULT_DATA_PATH = 'cleaned_investments!.csv'
+ALTERNATE_DATA_PATH = './.devcontainer/cleaned_investments!.csv'
+
+DEFAULT_DATA_PATH = 'cleaned_investments!.csv'
+ALTERNATE_DATA_PATH = './.devcontainer/cleaned_investments!.csv'
 TOP_N = 10
 
 # Configure styling
