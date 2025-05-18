@@ -9,9 +9,8 @@ DEFAULT_DATA_PATH = 'cleaned_investments.csv'
 ALTERNATE_DATA_PATH = './.devcontainer/cleaned_investments.csv'
 TOP_N = 10
 
-# Configure styling
-plt.style.use('seaborn')
-sns.set_style('whitegrid')
+# Configure styling - UPDATED STYLE NAME
+sns.set_theme(style="whitegrid")  # Using seaborn's built-in theming
 plt.rcParams['figure.figsize'] = (12, 7)
 plt.rcParams['font.size'] = 12
 
@@ -134,7 +133,8 @@ def main():
         st.write(f"Data shape: {df.shape}")
         st.write(f"Columns: {list(df.columns)}")
         st.write(f"Current directory: {os.getcwd()}")
-        st.write(f"Files present: {os.listdir('.')}")
+        if st.checkbox("Show files in directory"):
+            st.write(f"Files present: {os.listdir('.')}")
     
     # Main app sections
     display_dataframe_summary(df)
