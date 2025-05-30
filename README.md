@@ -21,6 +21,10 @@ Visuals include:
 
 Total funding amounts
 
+
+APP LINK 
+https://siaapppy-vc2ufbbredilx6bvrcdbu9.streamlit.app/
+
 Top N funded companies
 
 Funding by country
